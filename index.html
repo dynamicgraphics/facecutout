@@ -1,17 +1,732 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Microphone Test</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Face Cutout — Remove Background Instantly</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #6c47ff;
+      --primary-dark: #5535d4;
+      --surface: #ffffff;
+      --bg: #f4f2ff;
+      --text: #1a1a2e;
+      --muted: #6b7280;
+      --border: #e5e0ff;
+      --radius: 16px;
+      --shadow: 0 8px 32px rgba(108,71,255,0.12);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--primary);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-icon svg { width: 20px; height: 20px; fill: white; }
+    header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; }
+    header span { font-size: 0.75rem; background: #eef; color: var(--primary); border-radius: 20px; padding: 2px 10px; font-weight: 600; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 56px 24px 32px;
+    }
+    .hero h2 {
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.15;
+    }
+    .hero h2 span { color: var(--primary); }
+    .hero p {
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin-top: 12px;
+    }
+
+    /* ── Upload zone ── */
+    .upload-area {
+      max-width: 620px;
+      margin: 32px auto 0;
+      padding: 0 24px;
+    }
+    .dropzone {
+      border: 2.5px dashed var(--primary);
+      border-radius: var(--radius);
+      background: rgba(108,71,255,0.04);
+      padding: 52px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      position: relative;
+    }
+    .dropzone:hover, .dropzone.drag-over {
+      background: rgba(108,71,255,0.09);
+      border-color: var(--primary-dark);
+    }
+    .dropzone input[type="file"] {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      opacity: 0; cursor: pointer;
+    }
+    .dropzone-icon {
+      width: 56px; height: 56px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .dropzone-icon svg { width: 26px; height: 26px; fill: white; }
+    .dropzone h3 { font-size: 1.05rem; font-weight: 600; }
+    .dropzone p { color: var(--muted); font-size: 0.875rem; margin-top: 6px; }
+    .btn-browse {
+      display: inline-block;
+      margin-top: 18px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 100px;
+      padding: 10px 28px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s, transform 0.12s;
+    }
+    .btn-browse:hover { background: var(--primary-dark); transform: translateY(-1px); }
+    .formats { color: var(--muted); font-size: 0.78rem; margin-top: 12px; }
+
+    /* ── Processing / Result ── */
+    .workspace {
+      max-width: 960px;
+      margin: 40px auto;
+      padding: 0 24px;
+      display: none;
+    }
+    .workspace.visible { display: block; }
+
+    /* progress */
+    .progress-wrap {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+    .spinner {
+      width: 52px; height: 52px;
+      border: 4px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress-label { font-weight: 600; font-size: 1rem; }
+    .progress-sub { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+    .progress-bar-wrap {
+      height: 6px; background: var(--border); border-radius: 99px;
+      margin-top: 20px; overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%; background: var(--primary); border-radius: 99px;
+      width: 0%; transition: width 0.3s ease;
+    }
+
+    /* result */
+    .result-wrap { display: none; }
+    .result-wrap.visible { display: block; }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 560px) { .comparison { grid-template-columns: 1fr; } }
+
+    .img-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .img-card-label {
+      padding: 12px 18px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid var(--border);
+    }
+    .img-card img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: contain;
+      padding: 12px;
+    }
+    /* checkerboard for transparency */
+    .img-card.result-card img {
+      background-image:
+        linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+    }
+
+    /* actions */
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 100px;
+      padding: 11px 26px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s, transform 0.12s, box-shadow 0.18s;
+      border: none;
+      text-decoration: none;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1.5px solid var(--border); }
+    .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* background selector */
+    .bg-picker {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-top: 20px;
+      box-shadow: var(--shadow);
+    }
+    .bg-picker h4 { font-size: 0.85rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px; }
+    .swatch-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .swatch {
+      width: 36px; height: 36px; border-radius: 50%;
+      cursor: pointer; border: 2.5px solid transparent;
+      transition: transform 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+    }
+    .swatch:hover { transform: scale(1.15); }
+    .swatch.active { border-color: var(--primary); transform: scale(1.15); }
+    .swatch-transparent {
+      background-image:
+        linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+      background-size: 10px 10px;
+      background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+    }
+    .swatch-custom { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
+    #customColorInput { display: none; }
+
+    /* new image btn */
+    .new-btn-wrap { text-align: center; margin-top: 12px; }
+    .new-btn-wrap button { background: none; border: none; color: var(--primary); font-size: 0.9rem; cursor: pointer; font-weight: 600; }
+    .new-btn-wrap button:hover { text-decoration: underline; }
+
+    /* ── Features strip ── */
+    .features {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding: 40px 24px 60px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    .feature {
+      display: flex; align-items: flex-start; gap: 14px;
+      background: var(--surface); border-radius: var(--radius);
+      padding: 20px; flex: 1; min-width: 200px; max-width: 260px;
+      box-shadow: var(--shadow);
+    }
+    .feature-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--bg); display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .feature-icon svg { width: 20px; height: 20px; fill: var(--primary); }
+    .feature h4 { font-size: 0.9rem; font-weight: 700; }
+    .feature p { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    /* error */
+    .error-msg {
+      display: none;
+      background: #fff0f0;
+      color: #c00;
+      border: 1px solid #fcc;
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 0.875rem;
+      margin-top: 16px;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-    <div style="text-align: center; padding-top: 50px;">
-        <h1>Psyde Kwest</h1>
-        <p>Click "Start" to begin the microphone test.</p>
-        <button id="start-button" style="padding: 10px 20px; font-size: 1.2em;">Start</button>
-        <div id="diagnostic-output" style="margin-top: 20px; font-size: 1.5em;">Signal: 0</div>
+
+<!-- Header -->
+<header>
+  <div class="logo-icon">
+    <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 1 1 0 10A5 5 0 0 1 12 2zm0 12c5.33 0 8 2.67 8 4v2H4v-2c0-1.33 2.67-4 8-4z"/></svg>
+  </div>
+  <h1>FaceCutout</h1>
+  <span>100% Free</span>
+</header>
+
+<!-- Hero -->
+<div class="hero">
+  <h2>Remove <span>backgrounds</span><br/>in seconds</h2>
+  <p>Upload a photo — AI removes the background automatically. No signup required.</p>
+</div>
+
+<!-- Upload -->
+<div class="upload-area" id="uploadArea">
+  <div class="dropzone" id="dropzone">
+    <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,.heic,.heif" />
+    <div class="dropzone-icon">
+      <svg viewBox="0 0 24 24"><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-5H3v5a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-5h-2zM13 3.83l3.59 3.58 1.41-1.41L12 0 5.99 6l1.41 1.41L11 3.83V16h2V3.83z"/></svg>
     </div>
-    <script src="script.js"></script>
+    <h3>Drag &amp; drop your photo here</h3>
+    <p>or click to browse files</p>
+    <button class="btn-browse" type="button">Choose Photo</button>
+    <div class="formats">Supports JPG, PNG, WEBP, HEIC · Up to 10 MB</div>
+  </div>
+  <div class="error-msg" id="errorMsg"></div>
+</div>
+
+<!-- Workspace (progress + result) -->
+<div class="workspace" id="workspace">
+
+  <!-- Processing -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="spinner"></div>
+    <div class="progress-label" id="progressLabel">Loading AI model…</div>
+    <div class="progress-sub" id="progressSub">First run downloads the model (~50 MB). This takes a moment.</div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+  </div>
+
+  <!-- Result -->
+  <div class="result-wrap" id="resultWrap">
+    <div class="comparison">
+      <div class="img-card">
+        <div class="img-card-label">Original</div>
+        <img id="originalImg" src="" alt="Original" />
+      </div>
+      <div class="img-card result-card">
+        <div class="img-card-label">Background Removed</div>
+        <img id="resultImg" src="" alt="Result" />
+      </div>
+    </div>
+
+    <!-- Background colour picker -->
+    <div class="bg-picker">
+      <h4>Apply background colour</h4>
+      <div class="swatch-row">
+        <div class="swatch swatch-transparent active" title="Transparent" data-color="transparent"></div>
+        <div class="swatch" style="background:#ffffff" title="White" data-color="#ffffff"></div>
+        <div class="swatch" style="background:#000000" title="Black" data-color="#000000"></div>
+        <div class="swatch" style="background:#e8f4fd" title="Light Blue" data-color="#e8f4fd"></div>
+        <div class="swatch" style="background:#fde8e8" title="Light Red" data-color="#fde8e8"></div>
+        <div class="swatch" style="background:#e8fde8" title="Light Green" data-color="#e8fde8"></div>
+        <div class="swatch" style="background:#6c47ff" title="Purple" data-color="#6c47ff"></div>
+        <div class="swatch swatch-custom" title="Custom colour" id="customSwatch"></div>
+        <input type="color" id="customColorInput" value="#ff6600" />
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <a id="downloadBtn" href="#" download="cutout.png" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-5H3v5a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-5h-2zM13 3.83l3.59 3.58 1.41-1.41L12 0 5.99 6l1.41 1.41L11 3.83V16h2V3.83z"/></svg>
+        Download PNG
+      </a>
+    </div>
+    <div class="new-btn-wrap">
+      <button id="newImageBtn">+ Process another image</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Features -->
+<div class="features">
+  <div class="feature">
+    <div class="feature-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 14c-2.67 0-5-1.34-6-3.32.03-2 4-3.08 6-3.08s5.97 1.08 6 3.08C17 17.66 14.67 19 12 19z"/></svg>
+    </div>
+    <div>
+      <h4>AI-powered</h4>
+      <p>Deep learning model runs right in your browser. No server upload.</p>
+    </div>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 1a11 11 0 1 0 0 22A11 11 0 0 0 12 1zm1 18h-2v-2h2v2zm0-4h-2V7h2v8z"/></svg>
+    </div>
+    <div>
+      <h4>100% Private</h4>
+      <p>Your images never leave your device. Everything runs locally.</p>
+    </div>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">
+      <svg viewBox="0 0 24 24"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
+    </div>
+    <div>
+      <h4>Instant results</h4>
+      <p>After the first-run model download, processing is near-instant.</p>
+    </div>
+  </div>
+</div>
+
+<footer>FaceCutout &copy; 2026 — Powered by MediaPipe &amp; ONNX Runtime</footer>
+
+<!-- heic2any: converts HEIC/HEIF to JPEG in-browser -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+<script type="module">
+  import { ImageSegmenter, FilesetResolver }
+    from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+  // selfie_multiclass categories:
+  //  0 = background  1 = hair  2 = body-skin  3 = face-skin  4 = clothes  5 = others (glasses, accessories)
+  // We use confidence masks directly instead of this set
+
+  /* ── State ── */
+  let segmenter     = null;
+  let resultBlob    = null;
+  let activeBgColor = 'transparent';
+
+  /* ── DOM refs ── */
+  const fileInput        = document.getElementById('fileInput');
+  const dropzone         = document.getElementById('dropzone');
+  const uploadArea       = document.getElementById('uploadArea');
+  const workspace        = document.getElementById('workspace');
+  const progressWrap     = document.getElementById('progressWrap');
+  const progressLabel    = document.getElementById('progressLabel');
+  const progressSub      = document.getElementById('progressSub');
+  const progressBar      = document.getElementById('progressBar');
+  const resultWrap       = document.getElementById('resultWrap');
+  const originalImg      = document.getElementById('originalImg');
+  const resultImg        = document.getElementById('resultImg');
+  const downloadBtn      = document.getElementById('downloadBtn');
+  const newImageBtn      = document.getElementById('newImageBtn');
+  const errorMsg         = document.getElementById('errorMsg');
+  const swatches         = document.querySelectorAll('.swatch[data-color]');
+  const customSwatch     = document.getElementById('customSwatch');
+  const customColorInput = document.getElementById('customColorInput');
+
+  /* ── Upload handlers ── */
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+  dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+  newImageBtn.addEventListener('click', resetUI);
+
+  /* ── Background picker ── */
+  swatches.forEach(s => s.addEventListener('click', () => {
+    swatches.forEach(x => x.classList.remove('active'));
+    customSwatch.classList.remove('active');
+    s.classList.add('active');
+    activeBgColor = s.dataset.color;
+    applyBackground();
+  }));
+  customSwatch.addEventListener('click', () => customColorInput.click());
+  customColorInput.addEventListener('input', e => {
+    swatches.forEach(x => x.classList.remove('active'));
+    customSwatch.classList.add('active');
+    activeBgColor = e.target.value;
+    applyBackground();
+  });
+
+  /* ── Lazy-load MediaPipe segmenter ── */
+  async function getSegmenter() {
+    if (segmenter) return segmenter;
+    setProgress(15, 'Loading AI model…', 'Downloading face segmentation model (~10 MB). Cached after first run.');
+    const vision = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    );
+    setProgress(50, 'Initialising model…', 'Setting up segmenter.');
+    segmenter = await ImageSegmenter.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite',
+        delegate: 'GPU'
+      },
+      outputCategoryMask: true,
+      outputConfidenceMasks: true,
+      runningMode: 'IMAGE'
+    });
+    return segmenter;
+  }
+
+  /* ── Core logic ── */
+  async function handleFile(file) {
+    const isHeic = file.type === 'image/heic' || file.type === 'image/heif'
+      || file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
+    if (!isHeic && !file.type.startsWith('image/'))
+      return showError('Please upload an image file (JPG, PNG, WEBP, or HEIC).');
+    if (file.size > 10 * 1024 * 1024) return showError('Image must be under 10 MB.');
+    clearError();
+
+    uploadArea.style.display = 'none';
+    workspace.classList.add('visible');
+    progressWrap.style.display = 'block';
+    resultWrap.classList.remove('visible');
+    setProgress(0, 'Preparing image…', '');
+
+    // Convert HEIC → JPEG
+    let processFile = file;
+    if (isHeic) {
+      setProgress(5, 'Converting HEIC…', 'Decoding Apple image format.');
+      try {
+        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+        processFile = Array.isArray(converted) ? converted[0] : converted;
+      } catch (e) {
+        return showError('Could not convert HEIC file. Please try exporting as JPG first.');
+      }
+    }
+
+    // Show original preview
+    originalImg.src = URL.createObjectURL(processFile);
+
+    try {
+      const seg = await getSegmenter();
+      setProgress(70, 'Detecting face & hair…', 'AI is segmenting your image.');
+
+      // Load to HTMLImageElement so MediaPipe can process it
+      const imgEl = await loadImage(URL.createObjectURL(processFile));
+      const result = seg.segment(imgEl);
+
+      setProgress(88, 'Applying mask…', 'Building face & hair cutout.');
+
+      // Draw original image onto canvas, then apply per-pixel alpha from confidence masks
+      const W = imgEl.naturalWidth, H = imgEl.naturalHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, W, H);
+      const pixels = imageData.data;
+
+      // mask indices: 1=hair, 2=body-skin, 3=face-skin, 4=clothes, 5=others(glasses/accessories)
+      const hairData    = result.confidenceMasks[1].getAsFloat32Array();
+      const faceData    = result.confidenceMasks[3].getAsFloat32Array();
+      const othersData  = result.confidenceMasks[5]?.getAsFloat32Array(); // glasses, earrings, hats
+
+      const mW = result.confidenceMasks[1].width;
+      const mH = result.confidenceMasks[1].height;
+
+      // Hard-edge threshold settings — narrow feather band for clean, crisp cutouts
+      const THRESHOLD = 0.35;
+      const FEATHER   = 0.10; // total blend zone width; smaller = harder edge
+
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          // Scale pixel coords to mask coords if sizes differ
+          const mx = Math.min(mW - 1, Math.round(x * mW / W));
+          const my = Math.min(mH - 1, Math.round(y * mH / H));
+          const mi = my * mW + mx;
+
+          // Combine hair + face + accessories (glasses, etc.), clamp to [0,1]
+          const combined = Math.min(1,
+            hairData[mi] + faceData[mi] + (othersData ? othersData[mi] : 0)
+          );
+
+          // Hard threshold with a narrow linear feather band — avoids soft fading on glasses
+          let alpha;
+          if (combined >= THRESHOLD + FEATHER) {
+            alpha = 1;
+          } else if (combined <= THRESHOLD - FEATHER) {
+            alpha = 0;
+          } else {
+            alpha = (combined - (THRESHOLD - FEATHER)) / (FEATHER * 2);
+          }
+
+          pixels[(y * W + x) * 4 + 3] = Math.round(alpha * 255);
+        }
+      }
+
+      // Fill enclosed holes (glasses lenses, hat brims, accessories)
+      // Any transparent region fully surrounded by opaque pixels is interior — keep it.
+      fillInteriorHoles(pixels, W, H);
+
+      ctx.putImageData(imageData, 0, 0);
+
+      // Check that something was actually detected
+      const totalOpaque = [...pixels].filter((v, i) => i % 4 === 3 && v > 10).length;
+      if (totalOpaque < 100) {
+        showError('No face detected. Make sure the photo clearly shows a face.');
+        resetUI();
+        result.confidenceMasks.forEach(m => m.close());
+        return;
+      }
+
+      resultBlob = await canvasToBlob(canvas);
+      result.confidenceMasks.forEach(m => m.close());
+
+      setProgress(100, 'Done!', '');
+      await new Promise(r => setTimeout(r, 350));
+      showResult();
+
+    } catch (err) {
+      console.error(err);
+      showError('Something went wrong. Please try a different image or reload the page.');
+      resetUI();
+    }
+  }
+
+  /* ── Fill enclosed transparent holes (glasses, accessories, etc.) ── */
+  function fillInteriorHoles(pixels, W, H) {
+    const n = W * H;
+
+    // Binary mask: 1 = opaque, 0 = transparent
+    const mask = new Uint8Array(n);
+    for (let i = 0; i < n; i++) mask[i] = pixels[i * 4 + 3] > 20 ? 1 : 0;
+
+    // BFS flood-fill from every edge pixel that is transparent.
+    // Only transparent pixels reachable from the edge are "exterior".
+    const exterior = new Uint8Array(n);
+    const queue = new Int32Array(n);
+    let qHead = 0, qTail = 0;
+
+    const enqueue = idx => {
+      if (!mask[idx] && !exterior[idx]) {
+        exterior[idx] = 1;
+        queue[qTail++] = idx;
+      }
+    };
+
+    for (let x = 0; x < W; x++) { enqueue(x); enqueue((H - 1) * W + x); }
+    for (let y = 1; y < H - 1; y++) { enqueue(y * W); enqueue(y * W + W - 1); }
+
+    while (qHead < qTail) {
+      const idx = queue[qHead++];
+      const x = idx % W, y = (idx / W) | 0;
+      if (x > 0)     enqueue(idx - 1);
+      if (x < W - 1) enqueue(idx + 1);
+      if (y > 0)     enqueue(idx - W);
+      if (y < H - 1) enqueue(idx + W);
+    }
+
+    // Any transparent pixel NOT reachable from the edge is interior → fill it fully opaque
+    for (let i = 0; i < n; i++) {
+      if (!mask[i] && !exterior[i]) pixels[i * 4 + 3] = 255;
+    }
+  }
+
+  /* ── Helpers ── */
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  function canvasToBlob(canvas) {
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  }
+
+  function showResult() {
+    progressWrap.style.display = 'none';
+    resultWrap.classList.add('visible');
+    activeBgColor = 'transparent';
+    swatches.forEach(s => s.classList.toggle('active', s.dataset.color === 'transparent'));
+    customSwatch.classList.remove('active');
+    applyBackground();
+  }
+
+  function applyBackground() {
+    if (!resultBlob) return;
+    if (activeBgColor === 'transparent') {
+      const url = URL.createObjectURL(resultBlob);
+      resultImg.src = url;
+      downloadBtn.href = url;
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = activeBgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob(flatBlob => {
+        const url = URL.createObjectURL(flatBlob);
+        resultImg.src = url;
+        downloadBtn.href = url;
+      }, 'image/png');
+    };
+    img.src = URL.createObjectURL(resultBlob);
+  }
+
+  function setProgress(pct, label, sub) {
+    progressBar.style.width = pct + '%';
+    progressLabel.textContent = label;
+    progressSub.textContent = sub;
+  }
+
+  function resetUI() {
+    uploadArea.style.display = '';
+    workspace.classList.remove('visible');
+    progressWrap.style.display = 'block';
+    resultWrap.classList.remove('visible');
+    fileInput.value = '';
+    resultBlob = null;
+  }
+
+  function showError(msg) { errorMsg.textContent = msg; errorMsg.style.display = 'block'; }
+  function clearError()   { errorMsg.style.display = 'none'; }
+</script>
 </body>
 </html>
